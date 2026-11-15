@@ -3,7 +3,8 @@ import { QRCodeSVG } from 'qrcode.react';
 import { api, ApiError, isAuth, isCatalog, isConfig, isHostRoom, isPending, readSession, type AdminConfig, type Auth, type Catalog, type HostRoom, type PendingCreate } from '../shared/api';
 import { clearGame, loadIdentity, prepareJoinWithLock, type Identity } from '../shared/identity';
 import { useGame, type Binding } from '../shared/useGame';
-import type { Snapshot } from '../shared/protocol';
+import type { HostSnapshot } from '../shared/protocol';
+import { PlayerExperience } from '../features/player/PlayerExperience';
 
 type View = 'player' | 'host' | 'admin';
 function viewFromHash(): View { return location.hash === '#host' ? 'host' : location.hash === '#admin' ? 'admin' : 'player'; }
@@ -62,9 +63,8 @@ export default function App() {
     ? { role: 'player', identity }
     : view === 'host' && room && auth ? { role: 'host', room, auth } : null;
   const game = useGame(binding, setIdentity, expireHost, requireSignIn);
-  const active = game.snapshot;
+  const active = game.snapshot?.role === binding?.role ? game.snapshot : null;
   const connected = game.connection === 'connected';
-  const savedPlayer = !!identity?.pin;
   const label = { offline: 'Offline', connecting: 'Connecting', connected: 'Connected', recovering: 'Recovering', paused: 'Recovery paused' }[game.connection];
   const [timeSample, setTimeSample] = useState({ offset: 0, server: '' });
   useEffect(() => {
@@ -128,6 +128,24 @@ export default function App() {
   }
   const joinUrl = `${location.origin}/?pin=${view === 'host' ? room?.game_pin ?? '' : identity?.pin ?? ''}`;
   const livePin = view === 'host' ? room?.game_pin : identity?.pin;
+  const notices = <>
+    {bootError && <div className="alert" role="alert">{bootError}<button className="link-button" onClick={() => {
+      if (confirm('Permanently forget the saved player identity and host recovery information on this device?')) {
+        localStorage.removeItem('quiz.player.v1'); ['quiz.auth.v1', 'quiz.host.v1', 'quiz.create.v1'].forEach(key => sessionStorage.removeItem(key)); location.reload();
+      }
+    }}>Explicitly forget saved identity</button></div>}
+    {(error || game.error) && <div className="alert" role="alert">{error || game.error}</div>}
+    {binding && !connected && <div className="notice" role="status"><strong>{game.connection === 'paused' ? 'Recovery needs your attention.' : 'Keeping your place safe.'}</strong> Your saved credentials stay on this device. {game.connection !== 'paused' && 'We’ll recover the latest game state when the connection returns.'}
+      <button className="secondary small" onClick={game.recover}>Recover in this tab</button>{view === 'host' && <button className="link-button" onClick={requireSignIn}>Sign in again</button>}</div>}
+  </>;
+  if (view === 'player') return <PlayerExperience
+    identity={identity} name={name} pin={pin} onNameChange={setName} onPinChange={setPin}
+    onJoin={join} joinDisabled={!identity || !!bootError} onForget={forget}
+    onLeave={() => { if (confirm('Leave this game? Your answers remain in the leaderboard.')) game.command({ event_type: 'leave_game', payload: {} }); }}
+    snapshot={active?.role === 'player' ? active : null} seconds={seconds}
+    connection={game.connection} pending={game.pending}
+    onAnswer={option_id => { if (active?.question) game.command({ event_type: 'submit_answer', payload: { question_id: active.question.id, option_id } }); }}
+  >{notices}</PlayerExperience>;
   return <div className="app-shell">
     <header className="topbar">
       <a href="#" className="brand" aria-label="Quiz Live home"><span className="brand-icon">Q</span><span>Quiz <strong>Live</strong></span></a>
@@ -138,7 +156,7 @@ export default function App() {
       <aside className="sidebar">
         <p className="nav-heading">WORKSPACE</p>
         <nav aria-label="Main navigation">
-          <a href="#" aria-current={view === 'player' ? 'page' : undefined}><span aria-hidden="true">◈</span> Play a quiz</a>
+          <a href="#"><span aria-hidden="true">◈</span> Play a quiz</a>
           <a href="#host" aria-current={view === 'host' ? 'page' : undefined}><span aria-hidden="true">▣</span> Host workspace</a>
           <a href="#admin" aria-current={view === 'admin' ? 'page' : undefined}><span aria-hidden="true">☷</span> Configuration</a>
         </nav>
@@ -146,39 +164,14 @@ export default function App() {
         <div className="sidebar-footer">QUIZ LIVE <span>Protocol v1</span></div>
       </aside>
       <main>
-        <div className="breadcrumb">Workspace <span>/</span> {view === 'player' ? 'Play a quiz' : view === 'host' ? 'Host workspace' : 'Configuration'}</div>
+        <div className="breadcrumb">Workspace <span>/</span> {view === 'host' ? 'Host workspace' : 'Configuration'}</div>
         <div className="page-heading">
-          <div><p className="eyebrow">{view === 'player' ? 'EVERY ANSWER COUNTS' : view === 'host' ? 'BRING YOUR ROOM TOGETHER' : 'CATALOG OPERATIONS'}</p><h1>{view === 'player' ? savedPlayer ? 'Your live game' : 'Ready to play?' : view === 'host' ? 'Host workspace' : 'Configuration overview'}</h1>
-            <p className="subtitle">{view === 'player' ? 'Join the conversation. Test what you know. Enjoy the moment.' : view === 'host' ? 'Choose a quiz, invite your players, and take the lead.' : 'A read-only view of the active quiz catalog and validation health.'}</p></div>
+          <div><p className="eyebrow">{view === 'host' ? 'BRING YOUR ROOM TOGETHER' : 'CATALOG OPERATIONS'}</p><h1>{view === 'host' ? 'Host workspace' : 'Configuration overview'}</h1>
+            <p className="subtitle">{view === 'host' ? 'Choose a quiz, invite your players, and take the lead.' : 'A read-only view of the active quiz catalog and validation health.'}</p></div>
           {binding && <div className={`connection ${connected ? 'online' : ''}`} role="status"><span />{label}</div>}
         </div>
-        {bootError && <div className="alert" role="alert">{bootError}<button className="link-button" onClick={() => {
-          if (confirm('Permanently forget the saved player identity and host recovery information on this device?')) {
-            localStorage.removeItem('quiz.player.v1'); ['quiz.auth.v1', 'quiz.host.v1', 'quiz.create.v1'].forEach(key => sessionStorage.removeItem(key)); location.reload();
-          }
-        }}>Explicitly forget saved identity</button></div>}
-        {(error || game.error) && <div className="alert" role="alert">{error || game.error}</div>}
-        {binding && !connected && <div className="notice" role="status"><strong>{game.connection === 'paused' ? 'Recovery needs your attention.' : 'Keeping your place safe.'}</strong> Your saved credentials stay on this device. {game.connection !== 'paused' && 'We’ll recover the latest game state when the connection returns.'}
-          <button className="secondary small" onClick={game.recover}>Recover in this tab</button>{view === 'host' && <button className="link-button" onClick={requireSignIn}>Sign in again</button>}</div>}
-        {view === 'player' && !savedPlayer && <div className="join-layout">
-          <Panel className="join-panel"><div className="section-icon">↗</div><h2>Join a live quiz</h2><p className="muted">Enter the game PIN shared by your host.</p>
-            <form onSubmit={join}>
-              <label htmlFor="pin">Game PIN</label><input id="pin" inputMode="numeric" autoComplete="off" placeholder="123456" pattern="[1-9][0-9]{5}" maxLength={6} required value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, ''))} className="pin-input" />
-              <label htmlFor="name">Your display name</label><input id="name" autoComplete="nickname" placeholder="How should we call you?" required maxLength={80} value={name} onChange={event => setName(event.target.value)} />
-              <p className="field-note">Choose a name everyone in your room will recognize.</p>
-              <button className="primary full" disabled={!identity || !!bootError}>Join game <span aria-hidden="true">→</span></button>
-            </form><div className="secure-note">▣ &nbsp; Your place is saved automatically on this device.</div>
-          </Panel>
-          <div className="welcome-column"><div className="welcome-art" aria-hidden="true"><div className="art-grid" /><div className="art-card art-back"><span>LIVE QUIZ</span><i /><i /></div><div className="art-card art-front"><span className="art-check">✓</span><strong>A great answer<br />starts with you.</strong><div className="art-options"><i /><i /><i /></div></div><div className="art-bubble">Let’s play! ↗</div></div>
-            <h2>A shared challenge.<br />A brighter connection.</h2><p className="muted">From team check-ins to trivia nights, make every question a moment worth sharing.</p>
-            <div className="feature-row"><span>01</span><div><strong>Get your game PIN</strong><p>Your host will share a six-digit code or QR.</p></div></div><div className="feature-row"><span>02</span><div><strong>Make yourself known</strong><p>Pick your display name and join the room.</p></div></div><div className="feature-row"><span>03</span><div><strong>Play in the moment</strong><p>Answer live and see where you land.</p></div></div>
-          </div>
-        </div>}
-        {view === 'player' && savedPlayer && <>
-          <div className="room-strip"><span>GAME PIN <strong>{identity?.pin}</strong></span><span>Playing as <strong>{identity?.name}</strong></span><div className="strip-actions"><button className="link-button" disabled={!connected || !!game.pending} onClick={() => { if (confirm('Leave this game? Your answers remain in the leaderboard.')) game.command({ event_type: 'leave_game', payload: {} }); }}>Leave game</button><button className="link-button muted" onClick={forget}>Forget saved game</button></div></div>
-          {active ? <GameView snapshot={active} seconds={seconds} connected={connected} pending={game.pending} onAnswer={option_id => { if (active.question) game.command({ event_type: 'submit_answer', payload: { question_id: active.question.id, option_id } }); }} /> : <Panel className="empty-state"><div className="spinner" /><h2>Recovering your place</h2><p className="muted">Your name, credentials, and session are preserved while we contact the host’s room.</p></Panel>}
-        </>}
-        {view !== 'player' && !auth && <div className="auth-layout"><Panel><div className="section-icon">▣</div><h2>Sign in to your workspace</h2><p className="muted">Use your deployment’s administrator credential to host games or view catalog health.</p><form onSubmit={login}><label htmlFor="credential">Administrator credential</label><input id="credential" type="password" autoComplete="current-password" required value={credential} onChange={event => setCredential(event.target.value)} /><button className="primary full" disabled={busy || !!bootError}>{busy ? 'Signing in…' : 'Sign in securely →'}</button></form><p className="field-note">Credentials never appear in join links. Your browser uses a secure, HttpOnly session cookie.</p></Panel></div>}
+        {notices}
+        {!auth && <div className="auth-layout"><Panel><div className="section-icon">▣</div><h2>Sign in to your workspace</h2><p className="muted">Use your deployment’s administrator credential to host games or view catalog health.</p><form onSubmit={login}><label htmlFor="credential">Administrator credential</label><input id="credential" type="password" autoComplete="current-password" required value={credential} onChange={event => setCredential(event.target.value)} /><button className="primary full" disabled={busy || !!bootError}>{busy ? 'Signing in…' : 'Sign in securely →'}</button></form><p className="field-note">Credentials never appear in join links. Your browser uses a secure, HttpOnly session cookie.</p></Panel></div>}
         {view === 'host' && auth && !room && <div className="host-setup">
           <Panel><div className="panel-title"><div><h2>Create a new game</h2><p className="muted">Choose from the published quiz catalog.</p></div><button className="link-button" onClick={() => void fetchCatalog()}>Refresh</button></div>
             {pendingCreate && <div className="notice">A creation request is pending. Recover its result before creating another game. The original request key is retained.</div>}
@@ -191,7 +184,7 @@ export default function App() {
         {view === 'host' && auth && room && <>
           <div className="room-strip"><span>HOSTING <strong>{room.quiz_id}</strong></span><Badge good={connected}>{active?.state.replaceAll('_', ' ') ?? 'CONNECTING'}</Badge><div className="strip-actions"><button className="link-button" disabled={busy} onClick={() => void logout()}>Sign out</button><button className="link-button muted" onClick={() => { if (confirm('Forget this host capability in this tab? You will lose the ability to control this room.')) { sessionStorage.removeItem('quiz.host.v1'); setRoom(null); } }}>Forget room</button></div></div>
           <div className="live-layout"><div>
-            {active ? <GameView snapshot={active} seconds={seconds} connected={connected} pending={game.pending} onAnswer={() => undefined} /> : <Panel className="empty-state"><div className="spinner" /><h2>Connecting to your room</h2><p className="muted">Your host capability is safely retained in this tab.</p></Panel>}
+            {active?.role === 'host' ? <HostGameView snapshot={active} seconds={seconds} /> : <Panel className="empty-state"><div className="spinner" /><h2>Connecting to your room</h2><p className="muted">Your host capability is safely retained in this tab.</p></Panel>}
             <Panel className="controls"><div><h2>Game controls</h2><p className="muted">You set the pace. The server keeps the score.</p></div><div className="control-buttons">
               {active?.state === 'LOBBY' && <button className="primary" disabled={!connected || !!game.pending} onClick={() => hostControl('start_game')}>Start game →</button>}
               {active?.state === 'QUESTION_CLOSED' && <button className="primary" disabled={!connected || !!game.pending} onClick={() => hostControl('next_question')}>{active.question && active.question.index + 1 >= active.question.total ? 'Finish game' : 'Next question →'}</button>}
@@ -213,25 +206,20 @@ export default function App() {
   </div>;
 }
 
-function GameView({ snapshot, seconds, connected, pending, onAnswer }: { snapshot: Snapshot; seconds: number; connected: boolean; pending: string | null; onAnswer: (option: string) => void }) {
+function HostGameView({ snapshot, seconds }: { snapshot: HostSnapshot; seconds: number }) {
   const players = snapshot.roster.filter(player => !player.left);
   const question = snapshot.question;
   const open = snapshot.state === 'QUESTION_OPEN';
-  const player = snapshot.role === 'player' ? snapshot : null;
   return <div className="game-view">
-    <div className="stat-grid compact"><Panel><p className="eyebrow">IN THE ROOM</p><div className="stat-number">{players.length}<small>players</small></div></Panel><Panel><p className="eyebrow">{player ? 'YOUR SCORE' : 'ROOM STATUS'}</p><div className={player ? 'stat-number' : 'status-title'}>{player ? <>{player.own_score ?? 0}<small>points</small></> : snapshot.state.replaceAll('_', ' ')}</div></Panel><Panel><p className="eyebrow">PROGRESS</p><div className="stat-number">{question ? `${question.index + 1}/${question.total}` : '—'}<small>questions</small></div></Panel></div>
+    <div className="stat-grid compact"><Panel><p className="eyebrow">IN THE ROOM</p><div className="stat-number">{players.length}<small>players</small></div></Panel><Panel><p className="eyebrow">ROOM STATUS</p><div className="status-title">{snapshot.state.replaceAll('_', ' ')}</div></Panel><Panel><p className="eyebrow">PROGRESS</p><div className="stat-number">{question ? `${question.index + 1}/${question.total}` : '—'}<small>questions</small></div></Panel></div>
     {snapshot.state === 'LOBBY' && <Panel className="lobby"><div className="lobby-orbit" aria-hidden="true">◈</div><Badge good>YOU’RE IN THE RIGHT PLACE</Badge><h2>{snapshot.role === 'host' ? 'Your room is ready.' : 'You’re in. Get comfortable.'}</h2><p className="muted">{snapshot.role === 'host' ? 'Share your PIN or QR code. Start the game when everyone is here.' : 'The host will start the quiz when everyone is ready. Keep this page open.'}</p><div className="roster">{players.map(member => <span className="player-chip" key={member.player_id}><span className="avatar">{[...member.player_name][0]?.toLocaleUpperCase()}</span>{member.player_name}<i className={member.connected ? 'present' : ''} aria-label={member.connected ? 'Connected' : 'Away'} /></span>)}</div>{players.length === 0 && <p className="muted">Waiting for the first player…</p>}</Panel>}
-    {question && <Panel className="question-panel"><div className="question-topline"><Badge>Question {question.index + 1} of {question.total}</Badge><span className={open ? 'timer' : 'muted'} aria-live="off">{open ? `${seconds}s remaining` : 'Question closed'}</span></div><h2>{question.text}</h2><p className="muted">{question.points} points · Select one answer{player?.own_answer && open ? ' · Answer locked in' : ''}</p>
+    {question && <Panel className="question-panel"><div className="question-topline"><Badge>Question {question.index + 1} of {question.total}</Badge><span className={open ? 'timer' : 'muted'} aria-live="off">{open ? `${seconds}s remaining` : 'Question closed'}</span></div><h2>{question.text}</h2><p className="muted">{question.points} points · Select one answer</p>
       {open && <div className="time-track"><div style={{ width: `${Math.min(100, Math.max(0, seconds / ((Date.parse(question.deadline) - Date.parse(question.started_at)) / 1000) * 100))}%` }} /></div>}
       <div className="answer-grid">{question.options.map((option, index) => {
-        const selected = player?.own_answer?.option_id === option.id;
         const correct = !open && snapshot.closed_result?.correct_option_id === option.id;
         const count = snapshot.role === 'host' && !open ? snapshot.statistics?.counts[option.id] : undefined;
-        return <button key={option.id} className={`answer ${selected ? 'chosen' : ''} ${correct ? 'correct' : ''}`} disabled={snapshot.role !== 'player' || !open || !connected || seconds === 0 || !!player?.own_answer || !!pending} onClick={() => onAnswer(option.id)}><span className="answer-letter">{String.fromCharCode(65 + index)}</span><span>{option.text}</span>{correct && <span className="option-note">✓ Correct</span>}{selected && <span className="option-note">{open ? '✓ Locked in' : 'Your answer'}</span>}{count !== undefined && <span className="option-note">{count} responses</span>}</button>;
+        return <button key={option.id} className={`answer ${correct ? 'correct' : ''}`} disabled><span className="answer-letter">{String.fromCharCode(65 + index)}</span><span>{option.text}</span>{correct && <span className="option-note">✓ Correct</span>}{count !== undefined && <span className="option-note">{count} responses</span>}</button>;
       })}</div>
-      {player?.own_answer && open && <div className="success-message" role="status">✓ Answer received. Your result will be revealed when the question closes.</div>}
-      {pending === 'submit_answer' && <p className="muted" role="status">Confirming your answer…</p>}
-      {player?.own_result && !open && <div className="result-banner"><strong>{player.own_result.correct ? 'Nicely done!' : player.own_result.answered ? 'A good try. Keep going!' : 'Time got away this round.'}</strong><span>+{player.own_result.awarded_points} points</span></div>}
       {open && seconds === 0 && <p className="muted" role="status">Time is up. Waiting for the server to publish results.</p>}
     </Panel>}
     {snapshot.state === 'FINISHED' && <Panel className="finished-banner"><span aria-hidden="true">☆</span><div><p className="eyebrow">THAT’S A WRAP</p><h2>Great game, everyone.</h2><p>Thanks for bringing your curiosity. Here’s how the room finished.</p></div></Panel>}
