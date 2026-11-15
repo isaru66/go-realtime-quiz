@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels: {app: backend, azd-service-name: backend}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: backend}
+  template:
+    metadata:
+      labels: {app: backend}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: quiz-runtime
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: backend}
+      containers:
+        - name: backend
+          image: quiz-backend:latest
+          ports: [{name: http, containerPort: 8080}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          envFrom:
+            - configMapRef: {name: quiz-runtime-config}
+          env:
+            - {name: LISTEN_ADDR, value: ":8080"}
+            - {name: QUIZ_PATH, value: /config/quizzes.yaml}
+            - {name: PROTOCOL_SCHEMA_PATH, value: /app/protocol-v1.schema.json}
+            - {name: REDIS_ADDRS, value: "redis-0.redis:6379,redis-1.redis:6379,redis-2.redis:6379,redis-3.redis:6379,redis-4.redis:6379,redis-5.redis:6379"}
+            - {name: REDIS_TLS, value: "false"}
+            - {name: COOKIE_SECURE, value: "true"}
+            - {name: ALLOWED_ORIGINS, value: "https://quiz.example.com"}
+            - name: REDIS_PASSWORD
+              valueFrom: {secretKeyRef: {name: quiz-secrets, key: REDIS_PASSWORD}}
+            - name: ADMIN_CREDENTIAL
+              valueFrom: {secretKeyRef: {name: quiz-secrets, key: ADMIN_CREDENTIAL}}
+            - name: APP_SECRET
+              valueFrom: {secretKeyRef: {name: quiz-secrets, key: APP_SECRET}}
+          startupProbe: {httpGet: {path: /livez, port: http}, failureThreshold: 60, periodSeconds: 5}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /livez, port: http}, periodSeconds: 10}
+          volumeMounts: [{name: catalog, mountPath: /config, readOnly: true}]
+      volumes:
+        - name: catalog
+          configMap: {name: quiz-catalog}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels: {app: frontend, azd-service-name: frontend}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: frontend}
+  template:
+    metadata:
+      labels: {app: frontend}
+    spec:
+      serviceAccountName: quiz-runtime
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext: {runAsNonRoot: true, runAsUser: 101, fsGroup: 101, seccompProfile: {type: RuntimeDefault}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: frontend}
+      containers:
+        - name: frontend
+          image: quiz-frontend:latest
+          ports: [{name: http, containerPort: 8080}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          startupProbe: {httpGet: {path: /healthz, port: http}, failureThreshold: 30, periodSeconds: 3}
+          readinessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 32Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: backend}
+spec:
+  selector: {app: backend}
+  ports: [{name: http, port: 8080, targetPort: http}]
+  sessionAffinity: None
+---
+apiVersion: v1
+kind: Service
+metadata: {name: frontend}
+spec:
+  selector: {app: frontend}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: quiz
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [quiz.example.com]
+      secretName: quiz-ingress-tls
+  rules:
+    - host: quiz.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend: {service: {name: backend, port: {number: 8080}}}
+          - path: /ws
+            pathType: Prefix
+            backend: {service: {name: backend, port: {number: 8080}}}
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: frontend, port: {number: 8080}}}

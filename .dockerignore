@@ -1,0 +1,13 @@
+.git
+.azure
+.env
+.env.*
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+**/.terraform
+**/*.tfstate*
+**/__pycache__
+.venv
+src/backend/api

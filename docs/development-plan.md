@@ -1,12 +1,15 @@
 # Incremental development plan
 
-Each phase requires approval before the next phase starts. The complete runnable
-platform is the end goal, not the output of the architecture phase.
+All phases were pre-approved by the user after Phase 2. The application and
+deployment artifacts are now implemented; see [validation](validation.md) for
+executed checks and environment-dependent production validation still required.
 
 At every gate, report implementation/design changes, generated files, checks run
 and their outcomes, and outstanding issues. Do not label planned tests as passed.
 
 ## Phase 1 - Architecture and technical design
+
+Status: approved.
 
 - Establish `src/backend`, `src/frontend`, `docs`, configuration, deployment,
   integration-test, and load-test directories.
@@ -17,6 +20,10 @@ and their outcomes, and outstanding issues. Do not label planned tests as passed
 - Gate: approve architecture, proposed defaults, and implementation sequence.
 
 ## Phase 2 - Redis data model and WebSocket protocol
+
+Status: approved and implemented.
+See [Redis](redis-data-model.md), [transport](websocket-protocol.md), and
+[sequence diagrams](sequences.md).
 
 - Specify exact same-slot key/hash-tag layout, coordination partitions, PIN
   reservation, immutable session IDs, TTL cleanup, and due-work discovery.
@@ -30,6 +37,8 @@ and their outcomes, and outstanding issues. Do not label planned tests as passed
 
 ## Phase 3 - Go backend and quiz engine
 
+Status: implemented with Go Fiber; unit/race/vet/build checks passed.
+
 - Initialize the Go module and pin dependencies; add server lifecycle, REST and
   WebSocket transports, domain transitions, scoring, and repository contracts.
 - Implement YAML startup validation, safe reload, immutable versions, public DTOs,
@@ -41,6 +50,9 @@ and their outcomes, and outstanding issues. Do not label planned tests as passed
 
 ## Phase 4 - Redis Cluster and cross-pod communication
 
+Status: implemented and exercised against six Redis nodes and two backend
+processes, including simultaneous duplicate submissions and recovery.
+
 - Implement cluster client configuration, Lua mutations, durable state/history,
   deadline coordination, scoped fan-out, rate limiting, and snapshot recovery.
 - Add real multi-node Redis Compose topology, backend wiring, and cluster health
@@ -51,6 +63,9 @@ and their outcomes, and outstanding issues. Do not label planned tests as passed
 
 ## Phase 5 - React frontend
 
+Status: implemented using Azure-inspired blue/white styling; tests/typecheck/build
+and container checks passed.
+
 - Initialize Vite/React/TypeScript/Tailwind with pinned dependencies and lockfile.
 - Implement responsive player, host, read-only admin views, QR join URL, and
   typed connection/event handling without leaking backend quiz content.
@@ -59,6 +74,9 @@ and their outcomes, and outstanding issues. Do not label planned tests as passed
 - Gate: approve UI flows; full persistent recovery follows in Phase 6.
 
 ## Phase 6 - Persistent identity and reconnection
+
+Status: implemented; browser refresh, cross-backend identity recovery, backend
+restart and Redis failover are covered by executable checks.
 
 - Complete localStorage identity lifecycle, secure token bootstrap, idempotent
   join/rejoin, backoff/jitter, status display, and authoritative snapshot restore.
@@ -69,6 +87,10 @@ and their outcomes, and outstanding issues. Do not label planned tests as passed
 - Gate: approve reliable identity preservation and recovery UX.
 
 ## Phase 7 - Kubernetes deployment
+
+Status: manifests, Compose, Azure modules and operations runbook implemented;
+render/schema/Terraform checks passed. Live AKS deployment requires credentials,
+TLS/storage inputs and an isolated target environment.
 
 - Add Kustomize Deployments, Services, Redis Cluster lifecycle/bootstrap,
   example quiz ConfigMap, Secret references, TLS ingress, HPA, disruption budgets,
@@ -87,6 +109,9 @@ and their outcomes, and outstanding issues. Do not label planned tests as passed
 
 ## Phase 8 - Automated system tests and load tests
 
+Status: implemented, including CI, real-cluster integration and k6 multi-room
+gameplay smoke. See [validation](validation.md) for measured results.
+
 - Consolidate functional coverage from create/join/answer through final results.
 - Add k6 scripts for many rooms, join bursts, answer concurrency, and connections.
 - Add reproducible browser, multi-pod, backend-restart, Redis-failover, and
@@ -96,6 +121,10 @@ and their outcomes, and outstanding issues. Do not label planned tests as passed
 - Gate: approve regression suite and capacity/failure validation plan.
 
 ## Phase 9 - Horizontal scaling and failure recovery
+
+Status: local two-process recovery and Redis replica promotion verified.
+Production Kubernetes autoscaling/capacity/restore validation remains an
+environment-dependent acceptance step, not an asserted result.
 
 - Run multi-replica ingress-based games without affinity and verify synchronized
   questions, leaderboard consistency, deadlines, and exact-once scoring effects.

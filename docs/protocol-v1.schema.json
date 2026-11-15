@@ -1,0 +1,457 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quiz.invalid/schemas/protocol-v1.schema.json",
+  "title": "Quiz WebSocket protocol v1",
+  "description": "Validate inbound messages against #/$defs/client and outbound messages against #/$defs/server.",
+  "oneOf": [
+    { "$ref": "#/$defs/client" },
+    { "$ref": "#/$defs/server" }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string", "format": "uuid",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"
+    },
+    "time": {
+      "type": "string", "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$" },
+    "version": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "token": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "score": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "empty": { "type": "object", "additionalProperties": false },
+    "envelope": {
+      "type": "object",
+      "required": ["event_id", "event_type", "protocol_version", "game_pin", "timestamp", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "event_id": { "$ref": "#/$defs/uuid" },
+        "event_type": { "type": "string" },
+        "protocol_version": { "const": 1 },
+        "game_pin": { "type": "string", "pattern": "^[1-9][0-9]{5}$" },
+        "session_id": { "$ref": "#/$defs/uuid" },
+        "player_id": { "$ref": "#/$defs/uuid" },
+        "timestamp": { "$ref": "#/$defs/time" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "reply_to": { "$ref": "#/$defs/uuid" },
+        "payload": { "type": "object" }
+      }
+    },
+    "join": {
+      "type": "object",
+      "required": ["player_name", "reconnect_token"],
+      "additionalProperties": false,
+      "properties": {
+        "player_name": { "$ref": "#/$defs/name" },
+        "reconnect_token": { "$ref": "#/$defs/token" }
+      }
+    },
+    "reconnect": {
+      "type": "object",
+      "required": ["reconnect_token"],
+      "additionalProperties": false,
+      "properties": {
+        "reconnect_token": { "$ref": "#/$defs/token" },
+        "last_revision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "hostConnect": {
+      "type": "object",
+      "required": ["host_capability", "csrf_token"],
+      "additionalProperties": false,
+      "properties": {
+        "host_capability": { "$ref": "#/$defs/token" },
+        "csrf_token": { "$ref": "#/$defs/token" }
+      }
+    },
+    "answer": {
+      "type": "object",
+      "required": ["question_id", "option_id"],
+      "additionalProperties": false,
+      "properties": {
+        "question_id": { "$ref": "#/$defs/id" },
+        "option_id": { "$ref": "#/$defs/id" }
+      }
+    },
+    "control": {
+      "type": "object",
+      "required": ["expected_control_revision"],
+      "additionalProperties": false,
+      "properties": {
+        "expected_control_revision": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "client": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "not": {
+            "anyOf": [
+              { "required": ["revision"] },
+              { "required": ["reply_to"] }
+            ]
+          }
+        },
+        {
+          "oneOf": [
+            {
+              "required": ["player_id"],
+              "properties": { "event_type": { "const": "join_game" }, "payload": { "$ref": "#/$defs/join" } }
+            },
+            {
+              "required": ["player_id", "session_id"],
+              "properties": { "event_type": { "const": "reconnect" }, "payload": { "$ref": "#/$defs/reconnect" } }
+            },
+            {
+              "required": ["session_id"],
+              "not": { "required": ["player_id"] },
+              "properties": { "event_type": { "const": "host_connect" }, "payload": { "$ref": "#/$defs/hostConnect" } }
+            },
+            {
+              "required": ["player_id", "session_id"],
+              "properties": { "event_type": { "const": "submit_answer" }, "payload": { "$ref": "#/$defs/answer" } }
+            },
+            {
+              "required": ["player_id", "session_id"],
+              "properties": { "event_type": { "const": "leave_game" }, "payload": { "$ref": "#/$defs/empty" } }
+            },
+            {
+              "required": ["session_id"],
+              "not": { "required": ["player_id"] },
+              "properties": {
+                "event_type": { "enum": ["start_game", "next_question", "end_game"] },
+                "payload": { "$ref": "#/$defs/control" }
+              }
+            },
+            {
+              "required": ["session_id"],
+              "properties": {
+                "event_type": { "enum": ["request_snapshot", "ping"] },
+                "payload": { "$ref": "#/$defs/empty" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "option": {
+      "type": "object",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "question": {
+      "type": "object",
+      "required": ["id", "type", "text", "options", "index", "total", "points", "started_at", "deadline"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "single_choice" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "options": {
+          "type": "array", "minItems": 2, "maxItems": 8,
+          "items": { "$ref": "#/$defs/option" }
+        },
+        "index": { "type": "integer", "minimum": 0, "maximum": 99 },
+        "total": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "points": { "allOf": [{ "$ref": "#/$defs/score" }, { "minimum": 1 }] },
+        "started_at": { "$ref": "#/$defs/time" },
+        "deadline": { "$ref": "#/$defs/time" }
+      }
+    },
+    "member": {
+      "type": "object",
+      "required": ["player_id", "player_name", "connected", "left"],
+      "additionalProperties": false,
+      "properties": {
+        "player_id": { "$ref": "#/$defs/uuid" },
+        "player_name": { "$ref": "#/$defs/name" },
+        "connected": { "type": "boolean" },
+        "left": { "type": "boolean" }
+      }
+    },
+    "rank": {
+      "type": "object",
+      "required": ["player_id", "player_name", "score", "rank", "left"],
+      "additionalProperties": false,
+      "properties": {
+        "player_id": { "$ref": "#/$defs/uuid" },
+        "player_name": { "$ref": "#/$defs/name" },
+        "score": { "$ref": "#/$defs/score" },
+        "rank": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "left": { "type": "boolean" }
+      }
+    },
+    "leaderboard": {
+      "type": "array", "maxItems": 1000,
+      "items": { "$ref": "#/$defs/rank" }
+    },
+    "answerStatus": {
+      "type": "object",
+      "required": ["question_id", "accepted", "option_id", "accepted_at"],
+      "additionalProperties": false,
+      "properties": {
+        "question_id": { "$ref": "#/$defs/id" },
+        "accepted": { "const": true },
+        "option_id": { "$ref": "#/$defs/id" },
+        "accepted_at": { "$ref": "#/$defs/time" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": ["question_id", "correct_option_id", "answered", "correct", "awarded_points"],
+      "additionalProperties": false,
+      "properties": {
+        "question_id": { "$ref": "#/$defs/id" },
+        "correct_option_id": { "$ref": "#/$defs/id" },
+        "answered": { "type": "boolean" },
+        "correct": { "type": "boolean" },
+        "awarded_points": { "$ref": "#/$defs/score" }
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "required": ["question_id", "counts", "answer_count"],
+      "additionalProperties": false,
+      "properties": {
+        "question_id": { "$ref": "#/$defs/id" },
+        "counts": {
+          "type": "object", "minProperties": 2, "maxProperties": 8,
+          "propertyNames": { "$ref": "#/$defs/id" },
+          "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 1000 }
+        },
+        "answer_count": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "required": ["state", "role", "quiz_id", "quiz_version", "server_time", "expires_at", "control_revision", "roster", "leaderboard"],
+      "additionalProperties": false,
+      "properties": {
+        "state": { "enum": ["LOBBY", "QUESTION_OPEN", "QUESTION_CLOSED", "FINISHED", "EXPIRED"] },
+        "role": { "enum": ["player", "host"] },
+        "quiz_id": { "$ref": "#/$defs/id" },
+        "quiz_version": { "$ref": "#/$defs/version" },
+        "server_time": { "$ref": "#/$defs/time" },
+        "expires_at": { "$ref": "#/$defs/time" },
+        "control_revision": { "type": "integer", "minimum": 0 },
+        "roster": { "type": "array", "maxItems": 1000, "items": { "$ref": "#/$defs/member" } },
+        "leaderboard": { "$ref": "#/$defs/leaderboard" },
+        "question": { "$ref": "#/$defs/question" },
+        "own_answer": { "$ref": "#/$defs/answerStatus" },
+        "own_score": { "$ref": "#/$defs/score" },
+        "own_result": { "$ref": "#/$defs/result" },
+        "closed_result": {
+          "type": "object",
+          "required": ["question_id", "correct_option_id", "closed_at"],
+          "additionalProperties": false,
+          "properties": {
+            "question_id": { "$ref": "#/$defs/id" },
+            "correct_option_id": { "$ref": "#/$defs/id" },
+            "closed_at": { "$ref": "#/$defs/time" }
+          }
+        },
+        "statistics": { "$ref": "#/$defs/statistics" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "enum": ["LOBBY", "QUESTION_OPEN", "EXPIRED"] } } },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["closed_result"] },
+                { "required": ["own_result"] },
+                { "required": ["statistics"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "enum": ["LOBBY", "EXPIRED"] } } },
+          "then": {
+            "not": { "anyOf": [{ "required": ["question"] }, { "required": ["own_answer"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "enum": ["QUESTION_OPEN", "QUESTION_CLOSED"] } } },
+          "then": { "required": ["question"] }
+        },
+        {
+          "if": { "properties": { "state": { "const": "QUESTION_CLOSED" } } },
+          "then": { "required": ["closed_result"] }
+        },
+        {
+          "if": { "properties": { "role": { "const": "host" } } },
+          "then": { "not": { "anyOf": [{ "required": ["own_answer"] }, { "required": ["own_score"] }, { "required": ["own_result"] }] } },
+          "else": { "not": { "required": ["statistics"] } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "EXPIRED" } } },
+          "then": {
+            "properties": { "roster": { "maxItems": 0 }, "leaderboard": { "maxItems": 0 } },
+            "not": { "required": ["own_score"] }
+          }
+        }
+      ]
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "retryable"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_message", "unsupported_protocol", "unauthenticated", "forbidden",
+            "wrong_pin", "session_unavailable", "session_expired", "session_mismatch",
+            "invalid_credentials", "membership_left", "connection_replaced",
+            "game_already_started", "invalid_state", "stale_control_revision",
+            "question_mismatch", "deadline_passed", "invalid_option", "already_answered",
+            "idempotency_conflict", "rate_limited", "capacity_exceeded",
+            "temporarily_unavailable"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "retryable": { "type": "boolean" },
+        "retry_after_ms": { "type": "integer", "minimum": 0, "maximum": 60000 }
+      }
+    },
+    "questionEnded": {
+      "type": "object",
+      "required": ["question_id", "correct_option_id", "closed_at"],
+      "additionalProperties": false,
+      "properties": {
+        "question_id": { "$ref": "#/$defs/id" },
+        "correct_option_id": { "$ref": "#/$defs/id" },
+        "closed_at": { "$ref": "#/$defs/time" }
+      }
+    },
+    "timer": {
+      "type": "object",
+      "required": ["question_id", "server_time", "deadline"],
+      "additionalProperties": false,
+      "properties": {
+        "question_id": { "$ref": "#/$defs/id" },
+        "server_time": { "$ref": "#/$defs/time" },
+        "deadline": { "$ref": "#/$defs/time" }
+      }
+    },
+    "pong": {
+      "type": "object",
+      "required": ["server_time"],
+      "additionalProperties": false,
+      "properties": { "server_time": { "$ref": "#/$defs/time" } }
+    },
+    "server": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "if": { "properties": { "event_type": { "not": { "enum": ["error", "reconnect_failed"] } } } },
+          "then": { "required": ["session_id", "revision"] }
+        },
+        {
+          "if": { "properties": { "event_type": { "enum": ["game_joined", "reconnect_success", "answer_received", "answer_result", "game_left"] } } },
+          "then": { "required": ["player_id", "session_id", "revision"] }
+        },
+        {
+          "if": { "properties": { "event_type": { "enum": ["game_joined", "reconnect_success", "host_connected", "answer_received", "game_left", "command_accepted", "pong", "reconnect_failed"] } } },
+          "then": { "required": ["reply_to"] }
+        },
+        {
+          "if": { "properties": { "event_type": { "enum": ["game_joined", "reconnect_success"] } } },
+          "then": { "properties": { "payload": { "properties": { "role": { "const": "player" } } } } }
+        },
+        {
+          "if": { "properties": { "event_type": { "const": "host_connected" } } },
+          "then": {
+            "not": { "required": ["player_id"] },
+            "properties": { "payload": { "properties": { "role": { "const": "host" } } } }
+          }
+        },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "event_type": { "enum": ["game_joined", "reconnect_success", "host_connected", "state_snapshot"] },
+                "payload": { "$ref": "#/$defs/snapshot" }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "enum": ["player_joined", "player_left"] },
+                "payload": { "$ref": "#/$defs/member" }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "const": "question_started" },
+                "payload": { "$ref": "#/$defs/question" }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "const": "question_timer" },
+                "payload": { "$ref": "#/$defs/timer" }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "const": "answer_received" },
+                "payload": { "$ref": "#/$defs/answerStatus" }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "const": "question_ended" },
+                "payload": { "$ref": "#/$defs/questionEnded" }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "const": "answer_result" },
+                "payload": { "$ref": "#/$defs/result" }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "const": "leaderboard_updated" },
+                "payload": {
+                  "type": "object", "required": ["leaderboard"], "additionalProperties": false,
+                  "properties": { "leaderboard": { "$ref": "#/$defs/leaderboard" } }
+                }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "const": "answer_statistics" },
+                "payload": { "$ref": "#/$defs/statistics" }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "const": "pong" },
+                "payload": { "$ref": "#/$defs/pong" }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "enum": ["game_started", "game_finished", "game_left", "command_accepted", "server_draining"] },
+                "payload": { "$ref": "#/$defs/empty" }
+              }
+            },
+            {
+              "properties": {
+                "event_type": { "enum": ["error", "reconnect_failed"] },
+                "payload": { "$ref": "#/$defs/error" }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

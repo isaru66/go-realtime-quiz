@@ -23,3 +23,21 @@ variable "subscription_id" {
   type        = string
   description = "Target Azure subscription ID (AZURE_SUBSCRIPTION_ID)."
 }
+
+variable "aks_admin_group_object_ids" {
+  type        = list(string)
+  description = "Microsoft Entra group object IDs authorized to administer AKS; assign before production deployment."
+  default     = []
+}
+
+variable "node_vm_size" {
+  type        = string
+  description = "AKS node SKU; confirm quota and availability in southeastasia3 before provisioning."
+  default     = "Standard_D2s_v5"
+}
+
+variable "availability_zones" {
+  type        = list(string)
+  description = "AKS availability zones supported by the selected region and VM SKU."
+  default     = ["1", "2", "3"]
+}

@@ -1,0 +1,104 @@
+name: Validate quiz platform
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts-and-builds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/backend/go.mod
+          cache-dependency-path: src/backend/go.sum
+      - name: Go checks
+        working-directory: src/backend
+        run: |
+          test -z "$(gofmt -l cmd internal)"
+          go test -race ./...
+          go vet ./...
+          go build ./cmd/api
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+      - name: Frontend checks
+        working-directory: src/frontend
+        run: npm ci && npm test && npm run typecheck && npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Protocol and documentation contracts
+        run: |
+          python -m pip install -r tests/contracts/requirements.txt
+          python -m unittest discover -s tests/contracts -v
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.4
+      - name: Terraform checks without cloud access
+        working-directory: infra
+        run: terraform fmt -check -recursive && terraform init -backend=false && terraform validate && terraform test
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.32.3
+      - name: Render and validate Kubernetes overlays
+        run: |
+          kubectl kustomize deploy/kubernetes/overlays/development > "$RUNNER_TEMP/development.yaml"
+          kubectl kustomize deploy/kubernetes/overlays/production > "$RUNNER_TEMP/production.yaml"
+          docker run --rm -v "$RUNNER_TEMP:/manifests:ro" ghcr.io/yannh/kubeconform:v0.6.7 \
+            -strict -summary -kubernetes-version 1.32.0 /manifests/development.yaml /manifests/production.yaml
+
+  distributed-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/backend/go.mod
+          cache-dependency-path: src/backend/go.sum
+      - name: Create ephemeral test secrets
+        run: |
+          umask 077
+          {
+            printf 'REDIS_PASSWORD=%s\n' "$(openssl rand -hex 32)"
+            printf 'ADMIN_CREDENTIAL=%s\n' "$(openssl rand -hex 32)"
+            printf 'APP_SECRET=%s\n' "$(openssl rand -hex 32)"
+            printf 'JOIN_RATE_PER_MINUTE=1000\n'
+          } > "$RUNNER_TEMP/quiz-compose.env"
+      - name: Start two backends and six Redis nodes
+        run: |
+          docker compose --env-file "$RUNNER_TEMP/quiz-compose.env" -p quiz-session-ci \
+            -f deploy/compose/compose.yaml up --build -d --wait --wait-timeout 240
+      - name: Cross-backend lifecycle, concurrent answers, restart and primary failover
+        working-directory: src/backend
+        run: |
+          set -a
+          . "$RUNNER_TEMP/quiz-compose.env"
+          set +a
+          export BACKEND_A_URL=http://127.0.0.1:18080 BACKEND_B_URL=http://127.0.0.1:18081
+          export QUIZ_ALLOW_FAILURE_TESTS=true QUIZ_FAIL_REDIS_SERVICE=auto
+          export QUIZ_COMPOSE_PROJECT=quiz-session-ci QUIZ_COMPOSE_ENV="$RUNNER_TEMP/quiz-compose.env"
+          go test -tags=integration ./internal/transport -run TestDistributed -v -count=1 -timeout=4m
+      - name: Multi-room k6 gameplay smoke
+        run: |
+          set -a
+          . "$RUNNER_TEMP/quiz-compose.env"
+          set +a
+          docker run --rm --network host -e ADMIN_CREDENTIAL -e GAMES=2 -e PLAYERS=50 \
+            -e BACKEND_URLS=http://127.0.0.1:18080,http://127.0.0.1:18081 \
+            -e ORIGIN=http://localhost:8088 -v "$PWD/tests/load:/scripts:ro" \
+            grafana/k6:1.3.0 run --quiet /scripts/gameplay.js
+      - name: Service logs
+        if: failure()
+        run: docker compose --env-file "$RUNNER_TEMP/quiz-compose.env" -p quiz-session-ci -f deploy/compose/compose.yaml logs --tail 100 backend backend2
+      - name: Remove only this job's containers and volumes
+        if: always()
+        run: docker compose --env-file "$RUNNER_TEMP/quiz-compose.env" -p quiz-session-ci -f deploy/compose/compose.yaml down --volumes

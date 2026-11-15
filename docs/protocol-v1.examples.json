@@ -1,0 +1,185 @@
+[
+  {
+    "direction": "client",
+    "event": {
+      "event_id": "0cbfe560-e46e-400a-a998-2b9cb50af070",
+      "event_type": "join_game",
+      "protocol_version": 1,
+      "game_pin": "123456",
+      "player_id": "406bb60d-0e91-4bc3-9747-f67354d662aa",
+      "timestamp": "2026-11-15T08:30:00.000Z",
+      "payload": {
+        "player_name": "Player123",
+        "reconnect_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    }
+  },
+  {
+    "direction": "server",
+    "event": {
+      "event_id": "be98eab8-271e-4e8f-a493-81b52f112c66",
+      "event_type": "game_joined",
+      "protocol_version": 1,
+      "game_pin": "123456",
+      "session_id": "0b12dd76-8c74-4d6c-bd25-9a7f0230521e",
+      "player_id": "406bb60d-0e91-4bc3-9747-f67354d662aa",
+      "timestamp": "2026-11-15T08:30:00.010Z",
+      "revision": 2,
+      "reply_to": "0cbfe560-e46e-400a-a998-2b9cb50af070",
+      "payload": {
+        "state": "LOBBY",
+        "role": "player",
+        "quiz_id": "azure-fundamentals",
+        "quiz_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "server_time": "2026-11-15T08:30:00.010Z",
+        "expires_at": "2026-11-15T10:30:00.010Z",
+        "control_revision": 0,
+        "roster": [
+          {
+            "player_id": "406bb60d-0e91-4bc3-9747-f67354d662aa",
+            "player_name": "Player123",
+            "connected": true,
+            "left": false
+          }
+        ],
+        "leaderboard": [
+          {
+            "player_id": "406bb60d-0e91-4bc3-9747-f67354d662aa",
+            "player_name": "Player123",
+            "score": 0,
+            "rank": 1,
+            "left": false
+          }
+        ],
+        "own_score": 0
+      }
+    }
+  },
+  {
+    "direction": "client",
+    "event": {
+      "event_id": "60a489e3-1f12-4696-9aa4-4a05f02eeb79",
+      "event_type": "submit_answer",
+      "protocol_version": 1,
+      "game_pin": "123456",
+      "session_id": "0b12dd76-8c74-4d6c-bd25-9a7f0230521e",
+      "player_id": "406bb60d-0e91-4bc3-9747-f67354d662aa",
+      "timestamp": "2026-11-15T08:31:03.000Z",
+      "payload": { "question_id": "q1", "option_id": "A" }
+    }
+  },
+  {
+    "direction": "server",
+    "event": {
+      "event_id": "9843df76-c7cf-4e35-9b40-d0c916575734",
+      "event_type": "answer_received",
+      "protocol_version": 1,
+      "game_pin": "123456",
+      "session_id": "0b12dd76-8c74-4d6c-bd25-9a7f0230521e",
+      "player_id": "406bb60d-0e91-4bc3-9747-f67354d662aa",
+      "timestamp": "2026-11-15T08:31:03.010Z",
+      "revision": 4,
+      "reply_to": "60a489e3-1f12-4696-9aa4-4a05f02eeb79",
+      "payload": {
+        "question_id": "q1",
+        "accepted": true,
+        "option_id": "A",
+        "accepted_at": "2026-11-15T08:31:03.010Z"
+      }
+    }
+  },
+  {
+    "direction": "client",
+    "event": {
+      "event_id": "03579a83-ea39-41cb-be84-3be005e12b0a",
+      "event_type": "reconnect",
+      "protocol_version": 1,
+      "game_pin": "123456",
+      "session_id": "0b12dd76-8c74-4d6c-bd25-9a7f0230521e",
+      "player_id": "406bb60d-0e91-4bc3-9747-f67354d662aa",
+      "timestamp": "2026-11-15T08:31:10.000Z",
+      "payload": {
+        "reconnect_token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "last_revision": 4
+      }
+    }
+  },
+  {
+    "direction": "server",
+    "event": {
+      "event_id": "c0acb7ac-960b-476e-b3db-92792af15467",
+      "event_type": "reconnect_success",
+      "protocol_version": 1,
+      "game_pin": "123456",
+      "session_id": "0b12dd76-8c74-4d6c-bd25-9a7f0230521e",
+      "player_id": "406bb60d-0e91-4bc3-9747-f67354d662aa",
+      "timestamp": "2026-11-15T08:31:10.010Z",
+      "revision": 5,
+      "reply_to": "03579a83-ea39-41cb-be84-3be005e12b0a",
+      "payload": {
+        "state": "QUESTION_OPEN",
+        "role": "player",
+        "quiz_id": "azure-fundamentals",
+        "quiz_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "server_time": "2026-11-15T08:31:10.010Z",
+        "expires_at": "2026-11-15T10:31:03.010Z",
+        "control_revision": 1,
+        "roster": [
+          {
+            "player_id": "406bb60d-0e91-4bc3-9747-f67354d662aa",
+            "player_name": "Player123",
+            "connected": true,
+            "left": false
+          }
+        ],
+        "leaderboard": [
+          {
+            "player_id": "406bb60d-0e91-4bc3-9747-f67354d662aa",
+            "player_name": "Player123",
+            "score": 0,
+            "rank": 1,
+            "left": false
+          }
+        ],
+        "question": {
+          "id": "q1",
+          "type": "single_choice",
+          "text": "What is Microsoft Azure?",
+          "options": [
+            { "id": "A", "text": "Cloud computing platform" },
+            { "id": "B", "text": "Programming language" }
+          ],
+          "index": 0,
+          "total": 1,
+          "points": 1000,
+          "started_at": "2026-11-15T08:31:00.000Z",
+          "deadline": "2026-11-15T08:31:20.000Z"
+        },
+        "own_answer": {
+          "question_id": "q1",
+          "accepted": true,
+          "option_id": "A",
+          "accepted_at": "2026-11-15T08:31:03.010Z"
+        },
+        "own_score": 0
+      }
+    }
+  },
+  {
+    "direction": "server",
+    "event": {
+      "event_id": "8d09caab-8613-41c4-b156-f218f259bb90",
+      "event_type": "question_ended",
+      "protocol_version": 1,
+      "game_pin": "123456",
+      "session_id": "0b12dd76-8c74-4d6c-bd25-9a7f0230521e",
+      "timestamp": "2026-11-15T08:31:20.000Z",
+      "revision": 6,
+      "payload": {
+        "question_id": "q1",
+        "correct_option_id": "A",
+        "closed_at": "2026-11-15T08:31:20.000Z"
+      }
+    }
+  }
+]

@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: Service
+metadata: {name: redis}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app: redis}
+  ports:
+    - {name: client, port: 6379, targetPort: client}
+    - {name: cluster-bus, port: 16379, targetPort: cluster-bus}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: redis}
+spec:
+  serviceName: redis
+  replicas: 6
+  podManagementPolicy: Parallel
+  updateStrategy: {type: OnDelete}
+  selector:
+    matchLabels: {app: redis}
+  template:
+    metadata:
+      labels: {app: redis}
+    spec:
+      serviceAccountName: quiz-runtime
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext: {runAsNonRoot: true, runAsUser: 999, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels: {app: redis}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: topology.kubernetes.io/zone
+                labelSelector:
+                  matchLabels: {app: redis}
+      containers:
+        - name: redis
+          image: redis:7.4.7-alpine
+          command: [/bin/sh, /opt/redis/start.sh]
+          ports: [{name: client, containerPort: 6379}, {name: cluster-bus, containerPort: 16379}]
+          env:
+            - {name: REDIS_DNS_SUFFIX, value: redis.quiz-platform.svc.cluster.local}
+            - name: REDIS_PASSWORD
+              valueFrom: {secretKeyRef: {name: quiz-secrets, key: REDIS_PASSWORD}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources:
+            requests: {cpu: 100m, memory: 512Mi}
+            limits: {cpu: "1", memory: 768Mi}
+          startupProbe:
+            exec: {command: [/bin/sh, -ec, 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping | grep -q PONG']}
+            failureThreshold: 60
+            periodSeconds: 3
+          livenessProbe:
+            exec: {command: [/bin/sh, -ec, 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping | grep -q PONG']}
+            periodSeconds: 10
+          readinessProbe:
+            exec: {command: [/bin/sh, -ec, 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli cluster info | grep -q "cluster_state:ok"']}
+            periodSeconds: 5
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: scripts, mountPath: /opt/redis, readOnly: true}
+      volumes:
+        - name: scripts
+          configMap: {name: redis-scripts}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 10Gi}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: redis-init}
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels: {app: redis-init}
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: quiz-runtime
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 999, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: initialize
+          image: redis:7.4.7-alpine
+          command: [/bin/sh, /opt/redis/initialize.sh]
+          env:
+            - {name: REDIS_NODES, value: "redis-0.redis redis-1.redis redis-2.redis redis-3.redis redis-4.redis redis-5.redis"}
+            - name: REDIS_PASSWORD
+              valueFrom: {secretKeyRef: {name: quiz-secrets, key: REDIS_PASSWORD}}
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: scripts, mountPath: /opt/redis, readOnly: true}]
+      volumes:
+        - name: scripts
+          configMap: {name: redis-scripts}
