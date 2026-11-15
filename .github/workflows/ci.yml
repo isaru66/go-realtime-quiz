@@ -50,10 +50,31 @@ jobs:
           version: v1.32.3
       - name: Render and validate Kubernetes overlays
         run: |
-          kubectl kustomize deploy/kubernetes/overlays/development > "$RUNNER_TEMP/development.yaml"
-          kubectl kustomize deploy/kubernetes/overlays/production > "$RUNNER_TEMP/production.yaml"
-          docker run --rm -v "$RUNNER_TEMP:/manifests:ro" ghcr.io/yannh/kubeconform:v0.6.7 \
-            -strict -summary -kubernetes-version 1.32.0 /manifests/development.yaml /manifests/production.yaml
+          python -m pip install -r tests/deployment/requirements.txt
+          mkdir -p "$RUNNER_TEMP/redis-topologies"
+          KUBERNETES_RENDER_DIR="$RUNNER_TEMP/redis-topologies" \
+            python -m unittest discover -s tests/deployment -p test_kubernetes.py -v
+          docker run --rm -v "$RUNNER_TEMP/redis-topologies:/manifests:ro" ghcr.io/yannh/kubeconform:v0.6.7 \
+            -strict -summary -kubernetes-version 1.32.0 /manifests
+
+  redis-topologies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/backend/go.mod
+          cache-dependency-path: src/backend/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build backend for single-node cross-process smoke
+        run: docker build -q -f src/backend/Dockerfile -t quiz-backend:redis-test .
+      - name: Bootstrap, persistence, backups and cross-backend gameplay
+        env:
+          QUIZ_BACKEND_IMAGE: quiz-backend:redis-test
+        run: python -m unittest discover -s tests/deployment -p test_redis.py -v
 
   distributed-recovery:
     runs-on: ubuntu-latest
