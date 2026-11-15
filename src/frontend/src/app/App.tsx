@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, ApiError, isAuth, isCatalog, isConfig, isHostRoom, isPending, readSession, type AdminConfig, type Auth, type Catalog, type HostRoom, type PendingCreate } from '../shared/api';
-import { clearGame, loadIdentity, prepareJoin, type Identity } from '../shared/identity';
+import { clearGame, loadIdentity, prepareJoinWithLock, type Identity } from '../shared/identity';
 import { useGame, type Binding } from '../shared/useGame';
 import type { Snapshot } from '../shared/protocol';
 
@@ -110,9 +110,9 @@ export default function App() {
       }
     } finally { setBusy(false); }
   }
-  function join(event: FormEvent) {
+  async function join(event: FormEvent) {
     event.preventDefault(); setError('');
-    try { if (identity) setIdentity(prepareJoin(localStorage, identity, name, pin)); }
+    try { if (identity) setIdentity(await prepareJoinWithLock(localStorage, identity, name, pin)); }
     catch (failure) { setError(failureMessage(failure)); }
   }
   function forget() {

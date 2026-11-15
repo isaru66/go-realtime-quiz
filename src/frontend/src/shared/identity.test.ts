@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clearGame, loadIdentity, prepareJoin, randomToken, saveIdentity, tokenPattern, uuidPattern } from './identity';
+import { clearGame, loadIdentity, prepareJoin, prepareJoinWithLock, randomToken, saveIdentity, tokenPattern, uuidPattern, type Identity } from './identity';
 
 class MemoryStorage implements Storage {
   private items = new Map<string, string>();
@@ -30,6 +30,37 @@ describe('persistent player identity', () => {
     expect(loadIdentity(storage)).toEqual(acknowledged);
     expect(() => prepareJoin(storage, acknowledged, 'Other', '654321')).toThrow('Recover');
     expect(loadIdentity(storage)).toEqual(acknowledged);
+  });
+  it('does not replace a membership saved after this tab loaded its identity', () => {
+    const storage = new MemoryStorage();
+    const stale = loadIdentity(storage);
+    const joinedElsewhere = prepareJoin(storage, stale, 'Ada', '123456');
+    expect(() => prepareJoin(storage, stale, 'Grace', '654321')).toThrow('Recover');
+    expect(loadIdentity(storage)).toEqual(joinedElsewhere);
+  });
+  it('serializes concurrent tab joins and preserves the first saved credentials', async () => {
+    const storage = new MemoryStorage();
+    const stale = loadIdentity(storage);
+    let tail = Promise.resolve();
+    const locks = {
+      request: async (_name: string, callback: (lock: Lock | null) => Identity | Promise<Identity>) => {
+        const previous = tail;
+        let release!: () => void;
+        tail = new Promise<void>(resolve => { release = resolve; });
+        await previous;
+        try { return await callback(null); }
+        finally { release(); }
+      },
+    } as unknown as LockManager;
+    const results = await Promise.allSettled([
+      prepareJoinWithLock(storage, stale, 'Ada', '123456', locks),
+      prepareJoinWithLock(storage, stale, 'Grace', '654321', locks),
+    ]);
+    const joined = results.find(result => result.status === 'fulfilled');
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter(result => result.status === 'rejected')).toHaveLength(1);
+    if (joined?.status !== 'fulfilled') throw new Error('Expected one successful join');
+    expect(loadIdentity(storage)).toEqual(joined.value);
   });
   it('round-trips the exact snake_case storage representation', () => {
     const storage = new MemoryStorage();
@@ -80,6 +111,7 @@ describe('persistent player identity', () => {
     storage.setItem('quiz.player.v1', '{"playerId":"broken"}');
     expect(() => loadIdentity(storage)).toThrow('have not been erased');
     expect(storage.getItem('quiz.player.v1')).toBe('{"playerId":"broken"}');
+    saveIdentity(storage, identity);
     storage.setItem = () => { throw new Error('Storage disabled'); };
     expect(() => prepareJoin(storage, identity, 'Ada', '123456')).toThrow('Storage disabled');
   });

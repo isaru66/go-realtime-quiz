@@ -93,6 +93,25 @@ describe('WebSocket recovery lifecycle', () => {
     act(() => result.current.recover());
     expect(MockSocket.instances).toHaveLength(2);
   });
+  it('ignores a delayed close from a disposed socket after its replacement binds', () => {
+    const firstIdentity = prepareJoin(localStorage, loadIdentity(localStorage), 'Ada', '123456');
+    const secondIdentity = { ...firstIdentity, playerId: crypto.randomUUID(), pin: '654321' };
+    const binding: Binding = { role: 'player', identity: firstIdentity };
+    const { result, rerender } = renderHook(({ active }: { active: Binding }) => useGame(active, vi.fn(), vi.fn()), {
+      initialProps: { active: binding },
+    });
+    const oldSocket = latest();
+    act(() => oldSocket.open());
+    act(() => oldSocket.receive(message(firstIdentity)));
+    oldSocket.close = () => { oldSocket.readyState = 3; };
+    rerender({ active: { role: 'player', identity: secondIdentity } });
+    act(() => latest().open());
+    act(() => latest().receive(message(secondIdentity)));
+    act(() => oldSocket.serverClose(1000));
+    expect(result.current.connection).toBe('connected');
+    act(() => result.current.command({ event_type: 'request_snapshot', payload: {} }));
+    expect(latest().sent.map(value => JSON.parse(value).event_type)).toContain('request_snapshot');
+  });
   it('keeps unknown sessions but clears authenticated expiry without deleting the UUID', () => {
     const joined = prepareJoin(localStorage, loadIdentity(localStorage), 'Ada', '123456');
     const identity = { ...joined, sessionId }; saveIdentity(localStorage, identity);

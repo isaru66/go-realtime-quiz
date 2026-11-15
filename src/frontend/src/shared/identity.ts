@@ -44,12 +44,18 @@ export function saveIdentity(storage: Storage, identity: Identity): void {
   }));
 }
 export function prepareJoin(storage: Storage, identity: Identity, name: string, pin: string): Identity {
-  if (identity.pin || identity.token || identity.sessionId) throw new Error('Recover or explicitly leave the saved game before joining another.');
+  const saved = loadIdentity(storage);
+  if (saved.pin || saved.token || saved.sessionId) throw new Error('Recover or explicitly leave the saved game before joining another.');
+  if (identity.playerId !== saved.playerId) identity = saved;
   const normalized = name.trim();
   if ([...normalized].length < 1 || [...normalized].length > 40 || !/^[1-9]\d{5}$/.test(pin)) throw new Error('Enter a name (1–40 characters) and a six-digit PIN.');
   const joined = { playerId: identity.playerId, name: normalized, pin, token: randomToken() };
   saveIdentity(storage, joined);
   return joined;
+}
+export function prepareJoinWithLock(storage: Storage, identity: Identity, name: string, pin: string, locks: LockManager | undefined = navigator.locks): Promise<Identity> {
+  if (!locks) return Promise.reject(new Error('This browser does not support safe joining across tabs. Update your browser to continue.'));
+  return locks.request('quiz.player.join', () => prepareJoin(storage, identity, name, pin));
 }
 export function clearGame(storage: Storage, identity: Identity): Identity {
   const clean = { playerId: identity.playerId, name: identity.name };

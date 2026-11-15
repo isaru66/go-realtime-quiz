@@ -50,6 +50,9 @@ Storage writes must succeed before a join is sent. Neither transport loss,
 unknown sessions, generic authentication errors, local clocks, nor elapsed saved
 expiry delete player credentials. Only a confirmed server leave, authenticated
 expiry, or explicit confirmed forget clears game fields; player UUID is retained.
+Player joins use the Web Locks API and reread saved identity before writing, so
+concurrent tabs cannot replace existing recovery credentials. Browsers without
+Web Locks cannot start a join.
 The exceptional corrupt-storage recovery action explicitly forgets the entire
 device identity only after confirmation.
 

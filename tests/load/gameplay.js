@@ -57,7 +57,8 @@ export default function(data) {
   const advanced = new Set();
   let completed = false;
   let accepted = 0;
-  const endpoint = backends[(__VU - 1) % backends.length];
+  const backendIndex = host ? __VU - 1 : Math.floor((__VU - games - 1) / games);
+  const endpoint = backends[backendIndex % backends.length];
   const response = ws.connect(`${endpoint.replace(/^http/, 'ws')}/ws`, {
     headers: { Origin: origin, 'Sec-WebSocket-Protocol': 'quiz.v1', ...(host ? { Cookie: data.cookieHeader } : {}) },
     tags: { role: host ? 'host' : 'player' },

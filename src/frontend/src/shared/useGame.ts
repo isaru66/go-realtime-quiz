@@ -156,8 +156,9 @@ export function useGame(binding: Binding | null, updateIdentity: (identity: Iden
         }
       };
       localSocket.onclose = event => {
+        if (disposed) return;
         clearTimeout(bindTimer); clearInterval(heartbeat); bound.current = false;
-        if (disposed || stopped) return;
+        if (stopped) return;
         if ([1003, 1008, 1009].includes(event.code)) {
           stopped = true; setConnection('paused'); setError('Connection paused by the server. Another tab may be active, or sign-in may be required. Your credentials are preserved.'); return;
         }
