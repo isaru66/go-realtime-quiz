@@ -8,18 +8,20 @@ infra:
   provider: terraform
   path: ./infra
 
-# Both services deploy to AKS. Dockerfiles arrive in Phases 3 and 5, and Kustomize
-# manifests arrive in Phase 7. Until then, `azd provision` works but `azd deploy` does not.
+# Create namespace credentials and ingress TLS before deploy; see docs/operations.md.
 services:
   backend:
     project: ./src/backend
     host: aks
     docker:
       path: ./Dockerfile
+      context: ../..
     k8s:
       namespace: quiz-platform
       kustomize:
         dir: ../../deploy/kubernetes/overlays/development
+        edits:
+          - "set image quiz-backend=${SERVICE_BACKEND_IMAGE_NAME}"
   frontend:
     project: ./src/frontend
     host: aks
@@ -29,3 +31,5 @@ services:
       namespace: quiz-platform
       kustomize:
         dir: ../../deploy/kubernetes/overlays/development
+        edits:
+          - "set image quiz-frontend=${SERVICE_FRONTEND_IMAGE_NAME}"

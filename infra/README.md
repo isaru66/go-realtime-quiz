@@ -5,9 +5,11 @@ runs this Terraform for `azd provision` and `azd up`.
 
 ## Current scope
 
-This is a scaffold. It provisions only a resource group tagged with
-`azd-env-name`. The AKS, container registry, network, monitoring, and Key Vault
-modules are reserved under `modules/` and will be implemented in Phase 7.
+The root module composes an isolated VNet, Entra/RBAC AKS with Cilium network
+policy, ACR with kubelet AcrPull, Log Analytics, managed Prometheus collection,
+and an RBAC-enabled, purge-protected Key Vault. No secret values are created
+or stored in Terraform. See [operations](../docs/operations.md) for deployment,
+secret delivery, ingress, backups, restore boundaries, and validation status.
 
 ```text
 infra/
@@ -18,10 +20,10 @@ infra/
 |-- outputs.tf           # UPPERCASE outputs written to the azd environment
 `-- modules/
     |-- network/         # VNet and subnets for AKS and ingress
-    |-- aks/             # Cluster, node pools, workload identity, ingress
+    |-- aks/             # Cluster, node pool, workload identity, CSI
     |-- acr/             # Container registry and AcrPull for the kubelet
     |-- monitoring/      # Log Analytics and managed Prometheus
-    `-- keyvault/        # Secrets for Redis/admin credentials (never ConfigMaps)
+    `-- keyvault/        # Vault only; secret delivery is separately authorized
 ```
 
 ## Usage
@@ -73,19 +75,23 @@ terraform init -backend=false
 terraform validate
 ```
 
-## azd contract for AKS services (Phase 7)
+## azd contract for AKS services
 
-Before `azd deploy` can work, the Terraform must add these outputs:
+The Terraform exports these azd outputs:
 
 | Output | Purpose |
 | --- | --- |
 | `AZURE_AKS_CLUSTER_NAME` | Cluster that azd deploys to |
 | `AZURE_CONTAINER_REGISTRY_ENDPOINT` | Registry where azd pushes service images |
 
-The kubelet identity also needs `AcrPull` on the registry. The services also
-need `src/backend/Dockerfile`, `src/frontend/Dockerfile`, and the Kustomize
-overlay at `deploy/kubernetes/overlays/development`. Redis Cluster runs inside
-AKS, so no Azure Redis resource is planned.
+The kubelet identity receives `AcrPull` on the registry. Services build with
+`src/backend/Dockerfile` (repository-root context) and
+`src/frontend/Dockerfile` (frontend context). Kustomize overlays are under
+`deploy/kubernetes/overlays/`. Redis Cluster runs inside AKS; there is no Azure
+Redis resource. Ingress controller, DNS/TLS, backup object storage, application
+Secrets and alert receivers are explicit operator prerequisites. Use Entra
+admin group IDs through `TF_VAR_aks_admin_group_object_ids`; local AKS accounts
+are disabled. Verify region/SKU/zone quota before provisioning.
 
 The `.terraform.lock.hcl` pins provider hashes for linux_amd64 (GitHub
 Actions `ubuntu-latest`), linux_arm64 (WSL on Arm), darwin_arm64, and

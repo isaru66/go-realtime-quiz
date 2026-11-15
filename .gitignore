@@ -13,6 +13,7 @@ coverage/
 
 # Backend
 bin/
+/src/backend/api
 *.exe
 *.test
 coverage.out
@@ -34,6 +35,8 @@ override.tf.json
 *_override.tf.json
 
 # Local tooling
+.venv/
+__pycache__/
 .idea/
 .DS_Store
 Thumbs.db

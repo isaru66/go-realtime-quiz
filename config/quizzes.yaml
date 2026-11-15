@@ -1,0 +1,38 @@
+quizzes:
+  - id: azure-fundamentals
+    title: Azure Fundamentals
+    description: Three introductory Azure cloud questions.
+    questions:
+      - id: q1
+        type: single_choice
+        text: Which Azure service runs managed Kubernetes clusters?
+        duration_seconds: 20
+        points: 1000
+        options:
+          - {id: A, text: Azure Kubernetes Service}
+          - {id: B, text: Azure DNS}
+          - {id: C, text: Azure Blob Storage}
+          - {id: D, text: Azure Key Vault}
+        correct_answer: A
+      - id: q2
+        type: single_choice
+        text: Which service stores application secrets and certificates?
+        duration_seconds: 20
+        points: 1000
+        options:
+          - {id: A, text: Azure Monitor}
+          - {id: B, text: Azure Key Vault}
+          - {id: C, text: Azure Container Registry}
+          - {id: D, text: Azure Virtual Network}
+        correct_answer: B
+      - id: q3
+        type: single_choice
+        text: Which Azure service stores container images?
+        duration_seconds: 20
+        points: 1000
+        options:
+          - {id: A, text: Azure Load Balancer}
+          - {id: B, text: Azure Files}
+          - {id: C, text: Azure Container Registry}
+          - {id: D, text: Azure Policy}
+        correct_answer: C

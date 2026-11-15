@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: quiz-platform
+resources:
+  - namespace.yaml
+  - applications.yaml
+  - redis.yaml
+  - policies.yaml
+  - availability.yaml
+  - backup.yaml
+configMapGenerator:
+  - name: quiz-runtime-config
+    literals:
+      - GAME_IDLE_SECONDS=7200
+      - GAME_LIFETIME_SECONDS=86400
+      - RESULT_RETENTION_SECONDS=3600
+      - JOIN_RATE_PER_MINUTE=30
+  - name: quiz-catalog
+    files: [quizzes.yaml]
+  - name: redis-scripts
+    files: [scripts/start.sh, scripts/initialize.sh]
+  - name: backup-script
+    files: [scripts/backup.sh]

@@ -1,7 +1,8 @@
 # Architecture and technical design
 
-Status: Phase 1 design, pending approval. This describes intended behavior,
-not functionality already implemented.
+Status: architecture approved and application implemented. See
+[Redis](redis-data-model.md), [transport](websocket-protocol.md), and the
+[validation report](validation.md) for implementation choices and measured scope.
 
 ## 1. Scope and invariants
 
@@ -106,9 +107,9 @@ Creation must support idempotency so a network retry does not create another gam
 Persist question start/deadline timestamps. Submission and closure use Redis-side
 time checks, not browser time or a single backend pod's timer. A distributed
 deadline worker uses durable due-work discovery and idempotent closure; it must
-resume after all previous workers disappear. Phase 2 will specify its partitioned
-index and same-slot transaction layout. Client activity is not required for a
-question to close.
+resume after all previous workers disappear. The Phase 2 Redis contract specifies
+its partitioned index and same-slot transaction layout. Client activity is not
+required for a question to close.
 
 Default scoring is the question's configured points for a correct accepted
 answer and zero otherwise. No speed bonus or answer edits in the initial scope.
@@ -149,7 +150,7 @@ Use the Go Redis Cluster client with multiple discovery addresses, bounded pool
 sizes, operation deadlines, retry limits, authentication, and environment-specific
 transport security. Never silently fall back to a local map on Redis failure.
 
-Phase 2 will define exact keys, TTLs, scripts, scheduler partitions, and schemas.
+The Phase 2 Redis contract defines keys, TTLs, scripts, and scheduler partitions.
 Related keys must share a Redis Cluster hash tag for multi-key atomic commands
 [R1]. Choose a bounded coordination partition per game so a durable due-work
 index can share its slot; avoid one global hash tag that puts every game on one
@@ -163,16 +164,17 @@ Retries return the original accepted outcome, never increment score twice.
 Public answer acknowledgments reveal acceptance only; correctness and scores are
 withheld until closure, including reconnect snapshots and leaderboard projections.
 
-Use room-scoped Redis Pub/Sub as a low-latency notification layer and a bounded
-Redis Stream plus authoritative snapshots for recovery. Pub/Sub is at-most-once,
+Use room-scoped Redis Pub/Sub as a low-latency notification layer, bounded
+Redis Streams for change journaling, and authoritative snapshots for recovery.
+Pub/Sub is at-most-once,
 not durable [R2]. Commit durable state/history first; notification failures are
 repaired by periodic revision reconciliation, not by assuming publication worked.
-Each pod subscribes only to rooms with local clients. Independent per-pod stream
-cursors provide fan-out; a shared consumer group must not split room events
-between pods that all need to deliver them.
+Each pod subscribes only to rooms with local clients. A shared per-pod room reader
+coalesces notifications and atomically reads durable state for fan-out; it does
+not load-balance delivery using Redis consumer groups.
 
-Subscribe before obtaining a snapshot, buffer concurrent events, then deliver
-only revisions newer than the snapshot. Detect missing/duplicate revisions,
+Subscribe before obtaining the room reader's first snapshot, then deliver
+newer snapshots. Detect revision regression,
 resynchronize after Redis reconnect, and reconcile periodically even when a lost
 notification is the last event. Lagging clients receive a fresh snapshot when
 history has been trimmed. Disconnect bounded-queue slow clients for recovery
@@ -225,7 +227,7 @@ bounded key cardinality and only trusted-ingress forwarded addresses.
 REST handles public quiz metadata, authenticated configuration status, session
 creation, and operational endpoints. WebSocket handles joining, answering,
 reconnecting, leaving, host start/advance/end commands, and all live state updates.
-Phase 2 defines the exact routes, payloads, errors, and compatibility policy.
+The Phase 2 transport contract defines routes, payloads, errors, and compatibility.
 
 Every event carries an ID, type, protocol version, game PIN, timestamp, payload,
 and player ID when applicable. Server events also carry session ID and monotonic
@@ -287,8 +289,8 @@ join bursts, submissions, connection capacity, and recovery under load.
 Failure tests explicitly terminate pods and Redis primaries, with assertions on
 identity, authoritative state, consistency, measured loss, and restoration.
 
-Phase 1 has no runtime to test. Exact scripts/contracts arrive in Phase 2 and
-capacity acceptance thresholds are agreed before Phase 9, not fabricated here.
+The [validation report](validation.md) distinguishes executable checks from
+unmeasured production capacity; load-script thresholds are initial test targets.
 The proposed auth approach, fixed-point scoring, expiration defaults, and
 Kustomize packaging are included in this design's approval gate. Production
 domain/TLS issuer, storage class, backup target, retention/RPO/RTO, and capacity
