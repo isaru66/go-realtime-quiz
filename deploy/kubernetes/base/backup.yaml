@@ -29,7 +29,7 @@ spec:
                 limits: {cpu: "1", memory: 512Mi, ephemeral-storage: 16Gi}
               securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
               env:
-                - {name: REDIS_NODES, value: "redis-0.redis redis-1.redis redis-2.redis redis-3.redis redis-4.redis redis-5.redis"}
+                - {name: REDIS_NODES, value: "redis-0.redis"}
                 - name: REDIS_PASSWORD
                   valueFrom: {secretKeyRef: {name: quiz-secrets, key: REDIS_PASSWORD}}
                 - name: BLOB_CONTAINER_URL

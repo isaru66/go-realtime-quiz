@@ -14,7 +14,7 @@ kind: StatefulSet
 metadata: {name: redis}
 spec:
   serviceName: redis
-  replicas: 6
+  replicas: 1
   podManagementPolicy: Parallel
   updateStrategy: {type: OnDelete}
   selector:
@@ -96,7 +96,7 @@ spec:
           image: redis:7.4.7-alpine
           command: [/bin/sh, /opt/redis/initialize.sh]
           env:
-            - {name: REDIS_NODES, value: "redis-0.redis redis-1.redis redis-2.redis redis-3.redis redis-4.redis redis-5.redis"}
+            - {name: REDIS_NODES, value: "redis-0.redis"}
             - name: REDIS_PASSWORD
               valueFrom: {secretKeyRef: {name: quiz-secrets, key: REDIS_PASSWORD}}
           resources:

@@ -2,20 +2,28 @@
 
 ## Scope and guarantees
 
-Compose and Kubernetes run **six Redis 7.4.7 nodes: three primaries and three
-replicas**, with authentication, AOF `appendfsync everysec`, `noeviction`, and
-per-node persistent volumes. Backend state is shared, never sticky-session
-dependent. Two backend processes are mandatory for cross-process testing.
-Redis uses asynchronous replication: an acknowledged answer can be lost during
+Kubernetes defaults to **one Redis 7.4.7 pod in cluster mode**, owning all 16384
+slots with no replicas. An opt-in Kustomize component restores **six pods: three
+primaries and three replicas**. Compose remains six-node by default and is not
+switchable through this component. Both modes retain authentication, AOF
+`appendfsync everysec`, `noeviction`, and per-node persistent volumes. Backend
+state is shared, never sticky-session dependent. Two backend processes are
+mandatory for cross-process testing.
+
+Single-pod Redis has **no automatic failover**: restarts, voluntary evictions,
+and node loss interrupt service until Redis recovers. A surviving PVC preserves
+data; loss of its disk requires restoring a backup. Six-node Redis uses
+asynchronous replication: an acknowledged answer can be lost during
 failover. AOF's nominal one-second fsync interval is not a hard data-loss bound
 during disk stalls, host loss, or replica promotion. No zero-loss or
 distributed-atomic backup guarantee is made.
 
 Never run `down -v`, delete Redis PVCs, `FLUSHALL`, `CLUSTER RESET`, or initialize
 an empty replacement against existing state as routine recovery. Bootstrap
-creates a cluster only when **all six nodes are empty, unassigned singletons**.
-Otherwise it validates all slots and three healthy primary/replica pairs;
-mixed state fails with recovery guidance, without rewriting existing state.
+assigns slots only when **all configured nodes are empty, unassigned singletons**.
+Only one or six distinct endpoints are supported. Otherwise it validates all
+slots and either one primary with no replicas or three healthy primary/replica
+pairs; mixed state fails with recovery guidance, without rewriting existing state.
 
 ## Local Compose
 
@@ -73,7 +81,7 @@ Do not change Redis credentials between restarts without a coordinated rotation.
 | `LISTEN_ADDR` | `:8080` |
 | `QUIZ_PATH` | `/config/quizzes.yaml` |
 | `PROTOCOL_SCHEMA_PATH` | `/app/protocol-v1.schema.json`, included in backend image |
-| `REDIS_ADDRS` | All six comma-separated client endpoints; no cluster-bus ports |
+| `REDIS_ADDRS` | Single mode: `redis-0.redis:6379`; six-node mode: all six comma-separated client endpoints; no cluster-bus ports |
 | `REDIS_PASSWORD` | Runtime Secret, shared across Redis/backend/init/backup |
 | `ADMIN_CREDENTIAL` | Runtime Secret, never a Vite variable |
 | `APP_SECRET` | Shared raw random string of at least 32 characters |
@@ -184,13 +192,61 @@ cookie settings in production. Nginx WebSocket read/send timeouts are 3600s;
 idle sockets can still disconnect and must reconnect.
 
 Development uses the cluster's default dynamic StorageClass. Production
-requests `managed-csi-premium` and six distinct workers for Redis; AKS autoscaler
-can scale the provided pool from three to six. Ensure six-node quota, capacity
-and CSI permissions. Base/development placement across three workers **does
-not guarantee** each primary is on a different worker from its replica.
-Production anti-affinity separates all six, but zone-level placement and
+requests `managed-csi-premium`. Single mode uses one 10Gi Redis PVC and needs
+one eligible worker; this does not change the Terraform AKS pool minimum.
+Six-node production needs six distinct workers and six 10Gi PVCs; AKS autoscaler
+can scale the provided pool from three to six. Ensure quota, capacity and CSI
+permissions for the selected mode. Base/development placement across three
+workers **does not guarantee** each primary is on a different worker from its
+replica. Production anti-affinity separates all six, but zone-level placement and
 primary/replica zone diversity still need verification after bootstrap.
 PDBs restrict voluntary evictions only, not node/zone failures.
+
+### Select Redis topology
+
+Both `overlays/development` (also used by azd) and `overlays/production` default
+to a single pod in **cluster mode**, not standalone Redis. The existing Go
+ClusterClient and cluster readiness checks work unchanged. Bootstrap assigns
+all slots to that pod and validates existing state on subsequent runs.
+
+For six pods, add this top-level entry to the selected overlay's
+`kustomization.yaml` (append to `components` if it already exists):
+
+```yaml
+components:
+  - ../../components/redis-cluster
+```
+
+The component changes Redis replicas, backend discovery, init endpoints, and
+backup endpoints together. Do not override just the replica count. Remove the
+component entry to select single mode for a **fresh deployment**. Existing
+populated deployments must follow the migration guidance below.
+
+```bash
+kubectl kustomize deploy/kubernetes/overlays/production
+kubectl apply -k deploy/kubernetes/overlays/production
+kubectl -n quiz-platform wait --for=condition=complete job/redis-init --timeout=600s
+kubectl -n quiz-platform rollout status deployment/backend --timeout=300s
+```
+
+Substitute `development` when appropriate. Complete the secrets/image setup
+before applying; neither mode provisions backup storage or enables backups.
+
+**Upgrade warning for existing six-pod deployments:** enable the component
+**before** applying this default change, including before `azd deploy`.
+Otherwise the StatefulSet would be scaled down and backends would point at
+only one shard. Bootstrap's refusal cannot undo that scale-down.
+
+**Changing modes with data is a migration, not an in-place switch.** Stop
+writers, take and verify a complete backup, and restore into a separately
+configured target namespace with new volumes using the restore drill below.
+Patch its namespace and `REDIS_DNS_SUFFIX` consistently with that namespace.
+Preserve the old deployment/PVCs and original application secrets until target
+validation and traffic cutover succeed. Never scale six to one, reuse old
+cluster metadata, or reset/delete PVCs to make initialization pass. Redeploying
+without changing modes preserves the existing StatefulSet/PVC identities.
+
+### Apply versioned images
 
 For explicit, reproducible deployment, build/push versioned images, then copy
 an overlay to your environment configuration and set its `images` entries:
@@ -224,7 +280,9 @@ do not mix azd development deploys and production apply against one namespace.
 Changing generated scripts changes a Job's immutable template: delete the
 **completed** `redis-init` Job before reapplying; the new Job validates existing
 state, not resets it. StatefulSet updates are `OnDelete`: replace Redis pods
-one at a time after checking primary/replica health and waiting for resync.
+one at a time after checking primary/replica health and waiting for resync in
+six-node mode. Single mode needs a maintenance window: restarting its only pod
+interrupts service. The Redis PDB permits one unavailable pod in either mode.
 
 ### Configuration reload and TLS boundary
 
@@ -258,9 +316,11 @@ replacing the supplied Redis topology.
 The backup CronJob is intentionally **suspended** until its image and an
 off-cluster Azure Blob container are configured. The custom backup image
 contains `redis-cli`, `curl`, and `jq`; it requires no Kubernetes API access.
-Each run discovers the current primaries from all six stable DNS endpoints,
+Each run discovers the current primaries from the configured stable DNS endpoints,
 streams an independent RDB per primary, and records node IDs, topology,
-timestamps, and SHA-256 checksums in a manifest. Topology changes abort the set.
+timestamps, and SHA-256 checksums in a manifest. It requires one primary in
+single mode or three in six-node mode; mismatched membership, missing healthy
+slots, or topology changes abort the set.
 Only prefixes containing `manifest.json` are complete. This is **not** a
 distributed atomic snapshot: answers across shards may reflect different
 times. Prefer backups when no games are active; for a logical consistency
@@ -303,13 +363,16 @@ staging drill before relying on backups.
    Record incident time and preserve old PVCs/state for investigation.
 2. Select a complete backup prefix, download manifest, RDBs and `.nodes`
    topology files using read-only restore credentials. Verify every SHA-256
-   and that three primaries cover all 16384 slots without gaps/overlaps.
-3. Use a new isolated namespace/network and **new** six-node volumes. Do not
-   mix old AOF files with restored RDBs: Redis prioritizes AOF on startup.
-4. For each of the three saved primary node IDs, start a temporary
+   and that the saved primary or three primaries cover all 16384 slots without
+   gaps/overlaps.
+3. Use a new isolated namespace/network and **new** volumes for the selected
+   one- or six-node target. Set its namespace and Redis announced DNS suffix
+   consistently. Do not mix old AOF files with restored RDBs: Redis prioritizes
+   AOF on startup.
+4. For each saved primary node ID (one or three), start a temporary
    **standalone**, authenticated Redis of the same version with that RDB as
    `/data/dump.rdb`, `appendonly no`, and no `nodes.conf`. Export/replay its keys
-   to an empty freshly bootstrapped six-node target using
+   to an empty freshly bootstrapped target in the selected mode using
    `redis-cli --cluster import TARGET_SEED:6379 --cluster-from HOST:PORT
    --cluster-from-pass ... --cluster-copy` **with the target seed as SOURCE**.
    Here `--cluster-from` is the standalone RDB server, and the positional seed
@@ -318,8 +381,8 @@ staging drill before relying on backups.
    target via `REDISCLI_AUTH`, and do not log commands containing credentials.
    Run this for each saved primary. Do not use `--cluster-replace` to hide
    duplicate/conflicting restored keys; stop and investigate instead.
-5. Verify target slot coverage/replica links, key counts and sampled room
-   state/TTLs against each source. Old absolute deadlines may already have
+5. Verify target slot coverage and, for six-node mode, replica links, plus key
+   counts and sampled room state/TTLs against each source. Old absolute deadlines may already have
    expired; restoring does not extend games. Restarting a target with its own
    AOF must retain imported data. Never copy old cluster `nodes.conf` blindly
    into nodes with different identities or addresses.
@@ -337,7 +400,14 @@ operator starts a restore; actual time depends on volume sizes, image pulls,
 node provisioning and reconciliation. Test and replace these objectives with
 measured values; consistency across shards is not implied by either figure.
 
-### Single node replacement / rolling maintenance
+### Single-pod recovery
+
+Restart the only Redis pod with its healthy PVC, then wait for cluster readiness
+and backend `/readyz` before restoring traffic. There is no replica to promote.
+If the PVC is lost, preserve evidence and follow the full restore drill using a
+new volume. An empty new pod cannot recover the missing data by bootstrapping.
+
+### Six-node replacement / rolling maintenance
 
 With the same healthy PVC, restart a node and let it rejoin; verify replica
 sync before touching another node. With a lost primary, wait for its healthy
@@ -375,6 +445,8 @@ docker compose --env-file deploy/compose/.env -f deploy/compose/compose.yaml con
 cmp config/quizzes.yaml deploy/kubernetes/base/quizzes.yaml
 kubectl kustomize deploy/kubernetes/overlays/development
 kubectl kustomize deploy/kubernetes/overlays/production
+python -m pip install -r tests/deployment/requirements.txt
+python -m unittest discover -s tests/deployment -p test_kubernetes.py -v
 terraform -chdir=infra fmt -check -recursive
 terraform -chdir=infra init -backend=false
 terraform -chdir=infra validate
@@ -386,3 +458,5 @@ kubectl apply --dry-run=server -k deploy/kubernetes/overlays/production
 Server-side admission, CNI enforcement, Azure provisioning, ingress certificates,
 backup upload/restore, and node/zone failure recovery require a real staging
 environment and are not established by static rendering or mock Terraform tests.
+See `tests/integration/README.md` for isolated real Redis checks of both
+topologies, single-pod persistence, and cross-backend gameplay.

@@ -31,7 +31,7 @@ flowchart TB
     Pods["Replicated stateless Go pods"]
     Config["Quiz ConfigMap: mounted directory"]
     Secret["Kubernetes Secrets"]
-    Redis["Redis Cluster: 3 primaries + 3 replicas"]
+    Redis["Redis Cluster: 1 primary, or 3 primaries + 3 replicas"]
     Storage["Per-node persistent volumes"]
     Backup["Scheduled, restore-tested backups"]
     Metrics["Prometheus-compatible monitoring"]
@@ -53,8 +53,10 @@ flowchart TB
     Pods --> Metrics
 ```
 
-The six-node Redis topology is the initial deployment target, not a claim that
-the application has already been tested for availability or capacity.
+Kubernetes defaults to one primary owning all slots, with no automatic
+failover. An opt-in component selects three primaries and three replicas;
+Compose retains that six-node topology. Neither configuration alone establishes
+production availability or capacity.
 
 ## 3. Source boundaries
 
@@ -252,7 +254,8 @@ Kubernetes targets:
 - Replicated frontend/backend Deployments and Services with rolling updates,
   explicit resource requests/limits, HPA, disruption budgets, and topology spread.
 - Redis StatefulSet-based nodes with stable discovery, cluster bootstrap,
-  three primaries/three replicas, persistent volumes, authentication, persistence,
+  one primary by default or optional three primaries/three replicas, persistent
+  volumes, authentication, persistence,
   anti-affinity, and documented node replacement/recovery. StatefulSets provide
   persistent identity/storage primitives, not Redis cluster management [K2].
 - Scheduled backups with protected credentials, retention, off-cluster storage

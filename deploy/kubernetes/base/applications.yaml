@@ -39,7 +39,7 @@ spec:
             - {name: LISTEN_ADDR, value: ":8080"}
             - {name: QUIZ_PATH, value: /config/quizzes.yaml}
             - {name: PROTOCOL_SCHEMA_PATH, value: /app/protocol-v1.schema.json}
-            - {name: REDIS_ADDRS, value: "redis-0.redis:6379,redis-1.redis:6379,redis-2.redis:6379,redis-3.redis:6379,redis-4.redis:6379,redis-5.redis:6379"}
+            - {name: REDIS_ADDRS, value: "redis-0.redis:6379"}
             - {name: REDIS_TLS, value: "false"}
             - {name: COOKIE_SECURE, value: "true"}
             - {name: ALLOWED_ORIGINS, value: "https://quiz.example.com"}

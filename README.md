@@ -19,6 +19,12 @@ validation. See the [measured validation report](docs/validation.md) and
 [operations guide](docs/operations.md) for what was actually tested and the
 remaining boundaries.
 
+Kubernetes defaults to **one Redis pod in cluster mode**. Enable the
+`redis-cluster` Kustomize component for six pods (three primaries, three
+replicas); Compose remains six-node. Single-pod mode has no automatic failover.
+Existing six-pod deployments must enable the component before upgrading.
+See [topology selection and migration](docs/operations.md#select-redis-topology).
+
 Local validation includes two-backend gameplay, backend restart and Redis
 primary failover recovery, browser refresh/reconnect, and a small k6 gameplay
 smoke test. These results do not establish production capacity.
@@ -146,6 +152,7 @@ Redis inspection, failure recovery and persistence boundaries.
 |   |-- backup/                    # Cluster-aware backup utility image
 |   `-- kubernetes/
 |       |-- base/
+|       |-- components/redis-cluster/ # Opt-in six-pod topology
 |       `-- overlays/
 |           |-- development/
 |           `-- production/
