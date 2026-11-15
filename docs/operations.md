@@ -79,6 +79,7 @@ Do not change Redis credentials between restarts without a coordinated rotation.
 | `APP_SECRET` | Shared raw random string of at least 32 characters |
 | `ALLOWED_ORIGINS` | Local: `http://localhost:8088,http://localhost:5173`; production: exact HTTPS origin |
 | `COOKIE_SECURE` | `false` locally (`quiz_admin`), `true` in production (`__Host-quiz_admin`) |
+| `TRUSTED_PROXIES` | Compose trusts only its frontend at `172.30.0.10`; Kubernetes overlays trust the configured cluster pod CIDR, with backend ingress restricted to ingress-nginx by NetworkPolicy |
 | `REDIS_TLS` | `false` for supplied in-cluster Redis; see TLS boundary below |
 | `REDIS_CA_FILE` | Mounted CA bundle path when connecting to TLS-enabled Redis |
 | `GAME_IDLE_SECONDS` | Default `7200` (two hours) |
@@ -167,7 +168,9 @@ helm repo update
 # Select an organization-approved pinned chart version before installation:
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --version "$INGRESS_NGINX_CHART_VERSION" --namespace ingress-nginx --create-namespace \
-  --set controller.replicaCount=2
+  --set controller.replicaCount=2 \
+  --set controller.config.use-forwarded-headers=false \
+  --set controller.config.compute-full-forwarded-for=false
 kubectl -n quiz-platform create secret tls quiz-ingress-tls \
   --cert=deploy/tls.crt --key=deploy/tls.key
 ```
