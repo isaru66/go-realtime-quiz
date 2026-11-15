@@ -1,8 +1,28 @@
 # Quiz Live frontend
 
-React, TypeScript, Vite, and Tailwind application with an Azure/Fluent-inspired
-blue-and-white responsive interface. No quiz questions or deployment credentials
-are bundled in the client.
+React, TypeScript, Vite, and Tailwind application with separate player and
+workspace interfaces. Players get a white, viewport-filling quiz experience with
+spaced, centered Microsoft-palette red, green, blue, and yellow answer tiles.
+All player text is black, with bright tile backgrounds for accessible contrast.
+Answer buttons have a darker colored center and a lighter, four-sided beveled
+frame. Selected answers retain the frame and add a dark outline and lock label.
+Questions scale from 26-40px and answer text from 20-28px; consistent tile padding,
+bounded content width, and responsive gaps keep the proportions balanced.
+Live questions use three sections: progress controls at the top, the question
+and answer status below, and choices centered in the remaining space above the
+session footer. Long content still grows naturally and scrolls.
+The question counter and points label use 20px text on desktop and 16px on mobile;
+the countdown uses compact seconds notation such as `15s`.
+Hosts and admins
+retain the Azure/Fluent-inspired blue-and-white workspace. No quiz questions or
+deployment credentials are bundled in the client.
+
+The player journey covers joining, lobby, live questions, answer confirmation,
+round feedback, and final standings. Full screen means filling the browser
+viewport, not requesting browser fullscreen permission. All 2-8 answer choices
+retain their text and A-H labels, with shapes in addition to color. Long content
+can scroll, and reduced-motion preferences are respected. Game options contain
+the existing confirmed leave/forget actions; scoring and recovery are unchanged.
 
 ## Development
 
@@ -31,7 +51,8 @@ npm run build
 npm run preview
 ```
 
-Tests cover secure identity creation/preservation, retry backoff and actionable
+Tests cover player/workspace separation, answer and results screens, host/admin
+workflows, secure identity creation/preservation, retry backoff and actionable
 errors, protocol validation/redaction, and WebSocket session recovery.
 There is no separately configured linter. The build performs strict TypeScript
 checking (including unused symbols), then emits production assets in `dist`.

@@ -1,7 +1,8 @@
 # Real-time Multiplayer Quiz Platform
 
 A runnable, Kubernetes-oriented multiplayer quiz platform with a Go Fiber
-REST/WebSocket backend, an Azure-blue-and-white React/TypeScript interface, and
+REST/WebSocket backend, a fullscreen player quiz experience with Microsoft-color
+answer tiles, a separate Azure-blue-and-white host/admin workspace, and
 Redis Cluster as the shared authority for games, identities, answers and scores.
 
 ## Status
