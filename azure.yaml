@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: go-realtime-quiz
+metadata:
+  template: go-realtime-quiz@0.1.0
+
+infra:
+  provider: terraform
+  path: ./infra
+
+# Both services deploy to AKS. Dockerfiles arrive in Phases 3 and 5, and Kustomize
+# manifests arrive in Phase 7. Until then, `azd provision` works but `azd deploy` does not.
+services:
+  backend:
+    project: ./src/backend
+    host: aks
+    docker:
+      path: ./Dockerfile
+    k8s:
+      namespace: quiz-platform
+      kustomize:
+        dir: ../../deploy/kubernetes/overlays/development
+  frontend:
+    project: ./src/frontend
+    host: aks
+    docker:
+      path: ./Dockerfile
+    k8s:
+      namespace: quiz-platform
+      kustomize:
+        dir: ../../deploy/kubernetes/overlays/development

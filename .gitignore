@@ -1,0 +1,40 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Frontend
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Backend
+bin/
+*.exe
+*.test
+coverage.out
+
+# azd environments (contain local Terraform state and environment values)
+.azure/*
+!.azure/deployment-plan.md
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local tooling
+.idea/
+.DS_Store
+Thumbs.db
+*.log
